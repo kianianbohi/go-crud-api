@@ -37,7 +37,7 @@ func main() {
 
 	router := mux.NewRouter()
 	router.HandleFunc("/users", getUsers).Methods("GET")
-	router.HandleFunc("/users", createUser).Methods("POST")
+	router.HandleFunc("/user", createUser).Methods("POST")
 
 	log.Println("Server started on :8080")
 	log.Fatal(http.ListenAndServe(":8080", router))
