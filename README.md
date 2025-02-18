@@ -25,3 +25,7 @@ This project is a simple CRUD (Create, Read, Update, Delete) API built in Go. It
 ```bash
 git clone https://github.com/yourusername/go-crud-api.git
 cd go-crud-api
+
+## migrate
+migrate -path database/migration/ -database "mysql://username:password@tcp(localhost:3306)/database_name" -verbose up
+migrate -path database/migration/ -database "mysql://username:password@tcp(localhost:3306)/database_name" -verbose down
