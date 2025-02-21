@@ -1,40 +1,22 @@
 package main
 
 import (
-	"database/sql"
 	"encoding/json"
+	"go-crud-api/repository"
 	"log"
 	"net/http"
 	"strconv"
 
-	_ "github.com/go-sql-driver/mysql"
 	"github.com/gorilla/mux"
 )
 
-type User struct {
-	ID        int    `json:"id"`
-	Name      string `json:"name"`
-	Email     string `json:"email"`
-	CreatedAt string `json:"created_at"`
-}
-
-var db *sql.DB
-
 func main() {
-	var err error
-	// Update the connection string with your MySQL credentials
-	db, err = sql.Open("mysql", "root:910095879@tcp(127.0.0.1:3306)/go_crud_api")
+	// Initialize the database connection
+	err := repository.InitDB("root:910095879@tcp(127.0.0.1:3306)/go_crud_api")
 	if err != nil {
 		log.Fatal("Failed to connect to MySQL:", err)
 	}
-	defer db.Close()
-
-	// Test the database connection
-	err = db.Ping()
-	if err != nil {
-		log.Fatal("Failed to ping MySQL:", err)
-	}
-	log.Println("Connected to MySQL")
+	defer repository.GetDB().Close()
 
 	router := mux.NewRouter()
 	router.HandleFunc("/users", getUsers).Methods("GET")
@@ -48,23 +30,10 @@ func main() {
 }
 
 func getUsers(w http.ResponseWriter, r *http.Request) {
-	var users []User
-	rows, err := db.Query("SELECT id, name, email, created_at FROM users")
+	users, err := repository.GetAllUsers()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
-		log.Println("Failed to query users:", err)
 		return
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var user User
-		if err := rows.Scan(&user.ID, &user.Name, &user.Email, &user.CreatedAt); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			log.Println("Failed to scan user:", err)
-			return
-		}
-		users = append(users, user)
 	}
 	json.NewEncoder(w).Encode(users)
 }
@@ -72,48 +41,35 @@ func getUsers(w http.ResponseWriter, r *http.Request) {
 func getUser(w http.ResponseWriter, r *http.Request) {
 	params := mux.Vars(r)
 	idStr := params["id"]
-	var user User
 
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, "Invalid user ID", http.StatusBadRequest)
 		return
 	}
 
-	err = db.QueryRow("SELECT id, name, email, created_at FROM users WHERE id = ?", id).Scan(&user.ID, &user.Name, &user.Email, &user.CreatedAt)
+	user, err := repository.GetUserByID(id)
 	if err != nil {
-		if err == sql.ErrNoRows {
-			http.NotFound(w, r)
-		} else {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	json.NewEncoder(w).Encode(user)
 }
 
 func createUser(w http.ResponseWriter, r *http.Request) {
-	var user User
+	var user repository.User
 	err := json.NewDecoder(r.Body).Decode(&user)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	result, err := db.Exec("INSERT INTO users (name, email) VALUES (?, ?)", user.Name, user.Email)
+	err = repository.CreateUser(&user)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	id, err := result.LastInsertId()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	user.ID = int(id)
-	user.CreatedAt = "now"
 	json.NewEncoder(w).Encode(user)
 }
 
@@ -121,39 +77,44 @@ func updateUser(w http.ResponseWriter, r *http.Request) {
 	params := mux.Vars(r)
 	idStr := params["id"]
 
-	// Convert id from string to int
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
 		http.Error(w, "Invalid user ID", http.StatusBadRequest)
 		return
 	}
 
-	var user User
+	var user repository.User
 	err = json.NewDecoder(r.Body).Decode(&user)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	_, err = db.Exec("UPDATE users SET name = ?, email = ? WHERE id = ?", user.Name, user.Email, id)
+	err = repository.UpdateUser(id, &user)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	user.ID = id
-	user.CreatedAt = "now" // Placeholder
 	json.NewEncoder(w).Encode(user)
 }
 
 func deleteUser(w http.ResponseWriter, r *http.Request) {
 	params := mux.Vars(r)
-	id := params["id"]
+	idStr := params["id"]
 
-	_, err := db.Exec("DELETE FROM users WHERE id = ?", id)
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		http.Error(w, "Invalid user ID", http.StatusBadRequest)
+		return
+	}
+
+	err = repository.DeleteUser(id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
 	w.WriteHeader(http.StatusNoContent)
 }
